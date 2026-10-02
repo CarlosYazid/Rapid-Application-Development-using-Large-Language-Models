@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "vllm_version": "0.11.0",
+  "diffusers_version": "0.37.1",
+  "vision": {
+    "model": "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16",
+    "revision": "ca9543b126e8bf3176916d3d305ccc415f89fd4d",
+    "code_revision": "ca9543b126e8bf3176916d3d305ccc415f89fd4d",
+    "memory_gib": 28,
+    "max_model_len": 8192,
+    "max_num_seqs": 2,
+    "images_per_prompt": 1,
+    "native_tool_calls": false
+  },
+  "diffusion": {
+    "model": "black-forest-labs/FLUX.2-klein-4B",
+    "revision": "e7b7dc27f91deacad38e78976d1f2b499d76a294",
+    "reserve_gib": 8,
+    "maximum_side": 1024,
+    "maximum_images": 4
+  },
+  "headroom_gib": 2,
+  "hosted_text": {
+    "model": "nvidia/nemotron-3.5-lightning-30b-a3b",
+    "base_url": "http://llm_client:9000/v1",
+    "native_tool_calls": true
+  }
+}

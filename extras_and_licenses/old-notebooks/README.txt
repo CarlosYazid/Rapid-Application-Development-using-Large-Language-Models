@@ -1,0 +1,1 @@
+This directory contains deprecated notebooks that are no longer being used in the course. Those who took the course in the past (i.e. 2023) may be interested in them, so they are left here for future reference. Do not expect these notebooks to be up-to-date.

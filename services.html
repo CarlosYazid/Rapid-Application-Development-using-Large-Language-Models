@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>NVIDIA Microservices Dashboard</title>
+<style>
+  body {
+    font-family: "Segoe UI", Roboto, sans-serif;
+    background-color: #1a1a1a;
+    color: #e0e0e0;
+    margin: 0;
+    padding: 20px;
+  }
+  h1 {
+    color: #76b900;
+    text-align: center;
+    margin-bottom: 30px;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 20px;
+    max-width: 1400px;
+    margin: auto;
+  }
+  .card {
+    background-color: #262626;
+    border-radius: 10px;
+    padding: 20px;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+  .card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  }
+  .card h2 {
+    color: #76b900;
+    font-size: 1.2em;
+    margin-bottom: 10px;
+  }
+  .card p {
+    flex-grow: 1;
+    font-size: 0.9em;
+    color: #c0c0c0;
+    margin-bottom: 15px;
+  }
+  .link-btn {
+    background-color: transparent;
+    border: 1px solid #76b900;
+    color: #76b900;
+    padding: 8px 12px;
+    border-radius: 5px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+  }
+  .link-btn:hover {
+    background-color: #76b900;
+    color: #1a1a1a;
+  }
+  .trust-msg {
+    color: #76b900;
+    font-size: 1.2em;
+    text-align: center;
+    padding-top: 40px;
+  }
+</style>
+</head>
+<body>
+
+<h1>NVIDIA Microservices Dashboard</h1>
+
+<noscript>
+  <div class="trust-msg">
+    This dashboard is disabled in untrusted HTML.<br>
+    Please click <strong>Trust HTML</strong> in the toolbar above.
+  </div>
+</noscript>
+    
+<div id="services" class="grid"></div>
+
+<script>
+const services = [
+  { name: "JupyterLab", path: "/lab", port: 80, desc: "Main interactive environment for notebooks and labs.", openMode: "none" },
+  { name: "LLM Client", path: "/docs", port: 9000, desc: "Unified API gateway for large language model endpoints.", openMode: "external" },
+  { name: "Jaeger", path: "/search", port: 16686, desc: "Distributed tracing interface for observability and debugging.", openMode: "external" },
+  { name: "Dozzle", path: "/", port: 9999, desc: "Real-time Docker container log viewer.", openMode: "external" },
+  { name: "Chatbot", path: "/", port: 8990, desc: "Simple course chatbot.", openMode: "external" },
+  { name: "Docker Router", path: "/docs", port: 8070, desc: "Manages routing between Dockerized microservices. Used for assessments.", openMode: "external" },
+];
+
+const origin = window.location.origin || 'http://localhost';
+const grid = document.getElementById("services");
+
+function buildURL({ port, path }) {
+  return (port === 80 || port === 443) ? `${origin}${path}` : `${origin}:${port}${path}`;
+}
+
+function selectText(inputElem) {
+  inputElem.select();
+  inputElem.setSelectionRange(0, inputElem.value.length); // mobile safe
+}
+
+services.forEach(svc => {
+  const url = buildURL(svc);
+  const card = document.createElement("div");
+  card.className = "card";
+
+  if (svc.openMode === "iframe") {
+    // Direct open
+    card.innerHTML = `
+      <h2>${svc.name}</h2>
+      <p>${svc.desc}</p>
+      <a class="link-btn" href="${url}" target="_self">Open</a>
+    `;
+  } else if (svc.openMode === "external") {
+    // External → copy-friendly text
+    const id = `url-${svc.name.replace(/\s+/g, '-')}`;
+    card.innerHTML = `
+      <h2>${svc.name}</h2>
+      <p>${svc.desc}</p>
+      <input id="${id}" type="text" value="${url}" readonly
+        style="width: 100%; margin-bottom: 8px; padding: 5px; background: #1a1a1a; color: #76b900; border: 1px solid #76b900; border-radius: 5px;">
+      <button class="link-btn" onclick="selectText(document.getElementById('${id}')); alert('URL selected — press Ctrl+C to copy')">
+        Select URL
+      </button>
+    `;
+  } else {
+    card.innerHTML = `
+      <h2>${svc.name}</h2>
+      <p>${svc.desc}</p>
+    `;
+  }
+
+  grid.appendChild(card);
+});
+</script>
+
+
+</body>
+</html>

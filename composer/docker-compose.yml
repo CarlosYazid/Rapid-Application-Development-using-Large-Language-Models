@@ -1,0 +1,171 @@
+# (1) Use this file for docker runtime configurations that are common to both
+# development and deployment.
+
+# `version : '2.3'` lets us use the `runtime=nvidia` configuration so that our
+# containers can interact with the GPU(s).
+version: '2.3'
+
+## Volume shared by frontend and assessment microservices. Frontend must write a file 
+## for the assessment microservice to give you credit. Good luck!!
+volumes:
+  assessment_results:
+  synth:
+  model_cache:
+
+# `services` defines the containers you want to run. There will always be at least 2:
+# a `lab` container for your content, and `nginx` as a reverse proxy.
+#
+# Commonly, a third container for data loading is used here, and sometimes, even more
+# containers for other services like assessments, remote desktop, tensorboard, etc.
+services:
+
+# (2) To prevent name collisions, be sure to set the course id as project name in `.env`
+
+  ## Deliver jupyter labs interface for students.
+  lab:
+    init: true
+    runtime: nvidia
+    shm_size: 128gb
+    ulimits:
+      memlock: -1
+      stack: 67108864
+    volumes:
+      - ./notebooks/:/dli/task/
+      - ./docker-compose.yml:/dli/task/composer/docker-compose.yml
+      - ./docker-compose.override.yml:/dli/task/composer/docker-compose.override.yml
+      - synth:/dli/task/chatbot/synth/
+      # - ./nim-cache:/dli/task/nim-cache
+      # - ./model-store:/dli/task/model-store
+      ## Below lines give access to host docker.
+      # - /var/run/docker.sock:/var/run/docker.sock
+      # - /var/lib/docker/:/var/lib/docker/
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=0
+      - HF_HUB_ENABLE_HF_TRANSFER=TRUE
+      - TRANSFORMERS_VERBOSITY=error
+      - JUPYTER_TOKEN
+    ports:
+      - "9001:9001"
+
+  ## Deliver a server to interface with host docker orchestration
+  docker_router:
+    container_name: docker_router
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock  ## Give access to host docker
+      - ./assessment:/app/assessment
+      - ./notebooks:/app/notebooks
+    ports:
+      - "8070:8070"
+
+  # This container is required to reverse proxy content. It expects a config
+  # file at `/etc/nginx/nginx.conf` which we provide in this repo and mount.
+  #
+  # All services should be proxied through nginx, and all should be accessible
+  # on port 80, for compatibility with restricted corporate networks and to
+  # be compatible with upcoming course requirements.
+  nginx:
+    image: nginx:1.15.12-alpine
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+    depends_on:
+      - dozzle
+      - jaeger
+      - lab
+
+  ## Assessment microservice. Checks for assignment completion
+  assessment:
+    image: python:3.10-slim
+    volumes:
+      - assessment_results:/dli/assessment_results/
+      - ./assessment:/dli/assessment
+    entrypoint: ["/bin/sh", "-c"]
+    command: [". /dli/assessment/entrypoint.assessment.sh"]
+
+  chatbot: 
+    container_name: chatbot
+    volumes: 
+      - ./notebooks/:/notebooks/
+      - synth:/docs/synth
+    ports:
+      - "8990:8990"
+    depends_on: 
+      - "lab"
+    environment: 
+      - PORT=8990
+
+  chatbot_rproxy: 
+    container_name: chatbot_rproxy
+    volumes: 
+      - ./notebooks/:/notebooks/
+      - synth:/docs/synth
+    ports:
+      - "8991:8991"
+    depends_on: 
+      - "lab"
+    environment: 
+      - ROOT_PATH=/8990/
+      - PORT=8991
+
+  llm_client:
+    ports:
+      - "9000:9000"
+    environment:
+      - LLM_WRAPPER_URL=http://litellm_wrapper:9001
+      - LLM_LOCAL_RETRIEVAL=true
+      - LLM_USE_WRAPPER_DEFAULT=true
+      - LLM_AGENT_ALIAS_ENABLED=false
+      - LLM_REQUIRED_MODELS=["nvidia/nemotron-3.5-lightning-30b-a3b"]
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4317
+    depends_on:
+      litellm_wrapper:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9000/health', timeout=5)"]
+      interval: 10s
+      timeout: 6s
+      retries: 12
+
+  litellm_wrapper:
+    environment:
+      - LLM_CACHE_NAMESPACE=c-fx-09-v2:shared-runtime-v1
+      - LLM_CACHE_MAX_STREAM_DELAY=2
+      - LLM_CACHE_MAX_RESPONSE_DELAY=0
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4317
+    volumes:
+      - model_cache:/var/lib/llm
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9001/health', timeout=5)"]
+      interval: 10s
+      timeout: 6s
+      retries: 12
+
+  # --- Observability: Distributed Tracing ---
+  jaeger:
+    image: jaegertracing/all-in-one:1.57
+    ports:
+      - "16686:16686"  # UI
+      - "4317:4317"    # OTLP gRPC
+      - "4318:4318"    # OTLP HTTP
+    environment:
+      - QUERY_BASE_PATH=/jaeger
+      - COLLECTOR_OTLP_ENABLED=true
+      - LOG_LEVEL=info
+    restart: unless-stopped
+
+  # --- Observability: Logs ---
+  dozzle:
+    environment:
+      - DOZZLE_BASE=/lab/dozzle
+    image: amir20/dozzle:latest
+    container_name: dozzle
+    ports:
+      - "9999:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    restart: unless-stopped
+
+networks:
+  default:
+    name: nvidia-rad
